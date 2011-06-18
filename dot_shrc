@@ -1,0 +1,317 @@
+#Title: N/A
+#Author:    G. Clifford Williams
+#Purpose:   used as a .shrc or .profile this script initializes interactive
+#           shell sessions with the specified configuration determined by
+#           Operating System and/or shell implementation. In particular this
+#           script is for shells that implement the POSIX
+#           This Part
+
+
+#-----------------------------------------------------------------------------#
+#------------------------------------INIT-------------------------------------#
+#-----------------------------------------------------------------------------#
+    #This section checks to see whether the file has been read already. If so
+    #it exits (using the return command) with a nice message. It works by 
+    #setting a variable named for the pid of the current shell ($$). If the 
+    #variable is not empty the file has been processed before. This makes it 
+    # more suitable to use one file for both the .profile and .shrc
+[ "$(eval "echo \${my_${$}}")" = "processed" ] && \
+        { #echo "already read for my_${$}"
+            return 1;}
+
+eval "my_${$}=processed"
+
+#-----------------------------------------------------------------------------#
+#-------------------------------RUN MODE CHECK--------------------------------#
+#-----------------------------------------------------------------------------#
+case "$-" in 
+    #This section checks for the 'interactive mode' flag in the '$-' variable
+    #By checking the my_INTERACTIVE variable you can set chunks of code to 
+    #be conditional on the manner in which the shell was invoked
+    *i* ) 
+            my_INTERACTIVE="yes"
+            ;;
+    * ) 
+            my_INTERACTIVE="no"
+            ;;
+esac
+
+
+#-----------------------------------------------------------------------------#
+#------------------------------------FUNCTIONS--------------------------------#
+#-----------------------------------------------------------------------------#
+my_lecho(){
+    [ -n my_SILENT ] || echo "$(date +%H:%M:%S)|$@"
+}
+
+my_pathmatch_cleanup(){
+    IFS=$my_old_IFS
+    unset my_pathmatch_tmp1
+    unset my_pathmatch_search_del
+    unset my_pathmatch_search_var
+    unset my_pathmatch_search_string
+    unset my_old_IFS
+    [ "${reset_wordsplit:=no}" = "yes" ] && setopt noshwordsplit
+}
+
+my_pathmatch(){
+    my_pathmatch_search_var=${1}
+    my_pathmatch_search_string=${2:?}
+    my_pathmatch_search_del=${3:-":"}
+    my_old_IFS=${IFS}
+    IFS=${my_pathmatch_search_del}
+    #check to see if we're running zsh with shwordsplit set
+    #note if 'y' is in $- and $my_SHELL is (z|n)sh then shwordsplit is already
+    #set. So we do nothing. 
+    case $my_SHELL in 
+        ZSH*)
+            case $- in 
+                *y*)
+                    #here we do nothing
+                    ;;
+                *)
+                    setopt shwordsplit && reset_wordsplit=yes
+                    ;;
+            esac
+    esac
+    for my_pathmatch_tmp1 in $my_pathmatch_search_var ; do 
+        [ "${my_pathmatch_tmp1}" = "${my_pathmatch_search_string:?}" ] &&\
+            { my_pathmatch_cleanup; return 0 ;} 
+    done
+    my_pathmatch_cleanup
+    return 1
+}
+
+my_pathadd(){
+    my_tmp1=$1
+    shift 
+    case $my_tmp1 in
+        LUA*)
+            my_OFS=";"
+            ;;
+        *)
+            my_OFS=":"
+            ;;
+    esac
+
+    for PATH_add in $@; do 
+        if eval "[ -n \"\${$my_tmp1}\" ]" ; then 
+            if [ -d ${PATH_add} ] ; then 
+                eval "my_pathmatch \${$my_tmp1} ${PATH_add} \\${my_OFS}" ||\
+                eval "$my_tmp1=\"\${$my_tmp1}${my_OFS}${PATH_add}\""
+            fi
+        else
+            eval "$my_tmp1=$PATH_add"
+        fi
+    done
+    unset my_tmp1
+    unset PATH_add
+}
+
+my_cleanpath(){
+    #function to set a very basic PATH
+    PATH=/bin:/usr/bin:/sbin:/usr/sbin
+}
+
+my_reload(){
+    unset my_${$}
+    #[ -n ${BASH_ENV} ] && . ${BASH_ENV:"$ENV"} || . ${ENV}
+    my_loadfile=${BASH_ENV:-"${ENV}"}
+    [ -n ${my_loadfile} ] && . ${my_loadfile}
+}
+
+my_getshell(){
+    if [ "${KSH_VERSION}X" != "X" ] ; then
+        echo "KSH_VERSION:${KSH_VERSION}"
+    elif [ "${ZSH_VERSION}X" != "X" ] ; then
+        echo "ZSH_VERSION:${ZSH_VERSION}"
+    elif [ "${BASH_VERSION}X" != "X" ] ; then
+        echo "BASH_VERSION:${BASH_VERSION}"
+    else
+        echo "UNKNOWN"
+    fi
+}
+
+#-----------------------------------------------------------------------------#
+#-------------------Universal/Generic Settings--------------------------------#
+#-----------------------------------------------------------------------------#
+
+#------Get our SHELL-----#
+[ -n $my_SHELL ] && my_SHELL=$(my_getshell)
+
+#-----Get our OS-----#
+my_OS=$(uname) 
+
+#----Get our username----#
+#my_usrname=$(whoami)
+my_USERNAME=$(id -u)
+
+#------Set EDITOR(s)-----#
+if { which vim 2> /dev/null  1> /dev/null ;}; then
+    EDITOR=vim 
+else
+    EDITOR=vi
+fi
+FCEDIT=$EDITOR
+HISTEDIT=$EDITOR
+export EDITOR
+export FCEDIT
+export HISTEDIT
+#------Set PAGER-----#
+if { which less 2> /dev/null 1> /dev/null;}; then
+    PAGER=less
+else
+    PAGER=more
+fi
+export PAGER
+
+#------Useful bits of info-----#
+my_FULLHOSTNAME=$(hostname)
+my_HOST=${my_FULLHOSTNAME%%.*}
+my_DOMAIN=${my_FULLHOSTNAME#*.}
+my_NEWLINE="
+"
+
+
+case ${my_OS:-unset} in
+    Darwin )
+        #-------OS X Specifics-------#
+        unset PATH
+        #added for macports
+        my_pathadd PATH /opt/local/bin /opt/local/sbin
+        #added for pkgsrc
+        my_pathadd PATH /usr/pkg/bin 
+        #regular PATH(s)
+        my_pathadd PATH /usr/bin /bin /usr/sbin /sbin /usr/local/bin
+        my_pathadd PATH /usr/local/sbin /usr/X11/bin 
+
+        unset MANPATH
+        my_pathadd MANPATH /opt/local/man /opt/local/share/man /usr/pkg/man 
+        my_pathadd MANPATH /usr/local/man /usr/share/man /usr/X11/man
+        my_pathadd MANPATH /usr/X11/share/man
+
+        LC_CTYPE=en_US.UTF-8
+        export LC_CTYPE
+        ;;
+    FreeBSD )
+        #-------FreeBSD Specifics-------#
+        BLOCKSIZE=K
+        export BLOCKSIZE
+        my_cleanpath
+        my_pathadd PATH /usr/local/bin /usr/local/sbin
+        ;;
+    Linux )
+        #-------Linux Specifics-------#
+        my_cleanpath
+        my_pathadd PATH /usr/local/bin /usr/local/sbin
+        #get rid of that annoying and stupid 'colorls' crap
+        unalias ls
+        ;;
+    CYGWIN_NT-5.1 )
+        #-------CygWin Specifics-------#
+        CYGWIN=tty 
+        export CYGWIN
+        zstyle :compinstall filename '/cygdrive/c/.zshrc'
+        ;;
+esac
+
+#----------ALL SHELLS SETTINGS-----------#
+HISTSIZE=2500
+
+case ${my_SHELL:-unset} in 
+    ZSH* ) 
+        #--------Z SHELL--------#
+        my_lecho "initializing ZSH"
+        # Lines configured by zsh-newuser-install
+        HISTFILE=~/.zsh_history
+        SAVEHIST=1000000
+        #don't overwrite history file
+        setopt appendhistory 
+        #get rid of dupes in the history file
+        setopt hist_save_no_dups
+        #try good file locking for history file
+        setopt hist_fcntl_lock
+        #don't show dupes in history search
+        setopt hist_find_no_dups
+        #don't store the history/fc command in the history file
+        setopt hist_no_store
+        #write to the history file incrementally
+        setopt share_history
+        #allow short forms of various control structures
+        setopt short_loops
+        #list options on ambiguous completion
+        setopt autolist
+        bindkey -v
+        autoload -Uz compinit
+        compinit
+        # End of lines added by compinstall
+        PS1="[%n@%m:%/>${my_NEWLINE}%# "
+        ENV=${HOME}/.zshrc
+        export ENV
+        ;;
+    BASH* ) 
+        #--------Bourne Again SHELL--------#
+        my_lecho "initializing BASH"
+        set -o vi #vi mode editing
+        set -b #immediate background job reporting
+        set -B #brace expansion
+        BASH_ENV=${HOME}/.bashrc
+        export BASH_ENV
+        #source the BASH_ENV if it's readable
+        [ -r ${BASH_ENV} ] && . ${BASH_ENV}
+        HISTFILE=${HOME}/.bash_history
+        HISTFILESIZE=100000
+        #Don't put Dupes in history file 
+        export HISTCONTROL=ignoredups
+        #Append to history file (don't overwrite)
+        shopt -s histappend
+        #update LINES & COLS when window size changes
+        shopt -s checkwinsize
+        #look for bash completion files
+        [ -f /etc/bash_completion ] && . /etc/bash_completion 
+        [ -f /usr/local/etc/bash_completion ] &&\
+            . /usr/local/etc/bash_completion
+        [ -f /opt/local/etc/bash_completion ] &&\
+            . /opt/local/etc/bash_completion
+        PS1="[\u@\h:\w>\n\$ "
+        ;;
+    KSH* ) 
+        #--------Korn SHELL--------#
+        my_lecho "initializing KSH (or something pretending to be it)"
+        set -o vi #vi mode 
+        set -o viraw #for real KSH
+        set -o bgnice #nice background processes
+        set -b #immediate background job reporting
+        ENV=${HOME}/.kshrc
+        export ENV
+        HISTFILE=${HOME}/.ksh_history
+        HISTFILESIZE=100000
+        PS1='$(whoami)@$(hostname -s):$(pwd)> '
+        case $(id -u) in
+            0 ) PS1="${PS1}${my_NEWLINE}# ";;
+            * ) PS1="${PS1}${my_NEWLINE}$ ";;
+        esac
+        ;;
+    * )
+        #--------GENERIC SHELL--------#
+        my_lecho "initializing unknown shell"
+        set -o vi
+        HISTFILE=${HOME}/.sh_history
+        HISTFILESIZE=100000
+        ENV=${HOME}/.shrc
+        export ENV
+        #PS1='$(whoami)@$(hostname -s):$(pwd)>'
+        PS1="$my_USERNAME@$my_HOST> "
+        ;;
+esac
+
+#-------After all is said and done-------#
+my_pathadd PATH ~/bin ~/scripts ~/.bin
+export PATH     #In most cases you want to do this
+
+#-------Domain specific RC-------#
+[ -r ${HOME}/.shrc_${my_DOMAIN} ]  && .  ${HOME}/.shrc_${my_DOMAIN}
+#-------HOST specific RC-------#
+[ -r ${HOME}/.shrc_${my_HOST} ]  && .  ${HOME}/.shrc_${my_HOST}
+#-------LOCAL RC (always run if present)-------#
+[ -r ${HOME}/.shrc_local ]  && .  ${HOME}/.shrc_local

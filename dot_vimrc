@@ -1,0 +1,26 @@
+"comments
+"
+"Auto Indent
+set autoindent
+
+"Width of a tab
+set tabstop=4
+set shiftwidth=4
+"Use spaces instead of the TAB character
+set expandtab
+set showmatch
+"incrimental search result display and ignore case
+set incsearch
+set ignorecase
+"Let us know where we are in the file(s)
+set ruler
+"Turn off Audio bell and set visual on
+set vb t_vb=
+"turn off word wrapping
+set wrap!
+
+"indent folding
+set foldenable
+set fdm=indent
+"let space toggle a fold
+nnoremap <space> za

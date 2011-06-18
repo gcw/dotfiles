@@ -1,0 +1,30 @@
+#caption always "%{= kc}%H (system load: %l)%-21=%{= .m}%D %d.%m.%Y %0c"
+#change the hardstatus settings to give an window list at the bottom of the
+#screen, with the time and date and with the current window highlighted
+hardstatus alwayslastline
+#Active:red Waiting: magenta
+#hardstatus string '%{= kW}[%{kB}%H%{kW}|%= %{= km}%?%-Lw%?%{kr}%n*%f%t%?(%u)%?%{km}%?%+Lw%?%?%=%{W}|%{kB}%c:%s%{kW}]'
+
+#Active:Green Waiting: Blue
+#hardstatus string '%{= kW}[%{kB}%H%{kW}|%= %{= kB}%?%-Lw%?%{kG}%n*%f%t%?(%u)%?%{kB}%?%+Lw%?%?%=%{W}|%{kB}%c:%s%{kW}]'
+
+#Active:white Waiting: Black
+hardstatus string '%{= kW}[%{kB}%H%{kW}|%= %{= kK}%?%-Lw%?%{kw}%n*%f%t%?(%u)%?%{kK}%?%+Lw%?%?%=%{W}|%{kB}%c:%s%{kW}]'
+
+#Active:Cyan Waiting: Blue
+#hardstatus string '%{= kW}[%{kB}%H%{kW}|%= %{= kB}%?%-Lw%?%{kC}%n*%f%t%?(%u)%?%{kB}%?%+Lw%?%?%=%{kW}|%{kB}%c:%s%{kW}]'
+
+#Active:Yellow Waiting: Green
+#hardstatus string '%{= kW}[%{kB}%H%{kW}|%= %{= kG}%?%-Lw%?%{kY}%n*%f%t%?(%u)%?%{kG}%?%+Lw%?%?%=%{W}|%{kB}%c:%s%{kW}]'
+
+#UNUSED OLD LINE
+#hardstatus string '%{= kG}%-Lw%{= kW}%50> %n%f* %t%{= kG}%+Lw%< %{= kG}%-=%c:%s%{-}'
+
+#256 color setting(s)
+# terminfo and termcap for nice 256 color terminal
+# allow bold colors - necessary for some reason
+attrcolor b ".I"
+# tell screen how to set colors. AB = background, AF=foreground
+termcapinfo xterm 'Co#256:AB=\E[48;5;%dm:AF=\E[38;5;%dm'
+# erase background with current bg color
+defbce "on" 
