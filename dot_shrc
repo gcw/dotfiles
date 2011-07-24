@@ -67,7 +67,7 @@ my_pathmatch(){
         ZSH*)
             case $- in 
                 *y*)
-                    #here we do nothing
+                    echo -n '' #here we do nothing
                     ;;
                 *)
                     setopt shwordsplit && reset_wordsplit=yes
@@ -94,7 +94,7 @@ my_pathadd(){
             ;;
     esac
 
-    for PATH_add in $@; do 
+    for PATH_add in ${@:?"USAGE: my_pathadd <VARIABLE> <PTH1> [<PTH2>]..."};do 
         if eval "[ -n \"\${$my_tmp1}\" ]" ; then 
             if [ -d ${PATH_add} ] ; then 
                 eval "my_pathmatch \${$my_tmp1} ${PATH_add} \\${my_OFS}" ||\
@@ -106,6 +106,7 @@ my_pathadd(){
     done
     unset my_tmp1
     unset PATH_add
+    export PATH
 }
 
 my_cleanpath(){
@@ -127,6 +128,15 @@ my_getshell(){
         echo "ZSH_VERSION:${ZSH_VERSION}"
     elif [ "${BASH_VERSION}X" != "X" ] ; then
         echo "BASH_VERSION:${BASH_VERSION}"
+    elif ([ "${.sh.version}X" = "Version M 1993-12-28 s+X" ]) 2>/dev/null; then 
+        #the above is a test for the specific version of KSH that comes with
+        #OS X. Standard versions of KSH can be detected with the ${KSH_VERSION}
+        #check at the top of this function. 
+        #Note 1: The surrounding ()s are used to errors from shells that 
+        #complain about 'bad substitution'. You will need to update the string
+        #if Apple ever gets around to upgrading their included KSH. 
+        #Note: This test is expensive so we only execute it if all else fails
+        echo "KSH_VERSION:${.sh.version}"
     else
         echo "UNKNOWN"
     fi
@@ -143,7 +153,6 @@ my_getshell(){
 my_OS=$(uname) 
 
 #----Get our username----#
-#my_usrname=$(whoami)
 my_USERNAME=$(id -u)
 
 #------Set EDITOR(s)-----#
@@ -153,6 +162,7 @@ else
     EDITOR=vi
 fi
 FCEDIT=$EDITOR
+VISUAL=$EDITOR
 HISTEDIT=$EDITOR
 export EDITOR
 export FCEDIT
@@ -177,18 +187,23 @@ case ${my_OS:-unset} in
     Darwin )
         #-------OS X Specifics-------#
         unset PATH
-        #added for macports
+        unset MANPATH
+	    #added for HomeBrew (first priority)
+        my_pathadd PATH /usr/local/bin /usr/local/sbin
+        my_pathadd MANPATH /usr/local/man
+
+        #added for pkgsrc   (third priority)
+        my_pathadd PATH /usr/local/pkg/bin /usr/local/pkg/sbin
+        my_pathadd MANPATH /usr/local/pkg/man
+        
+        #added for macports (third priority)
         my_pathadd PATH /opt/local/bin /opt/local/sbin
-        #added for pkgsrc
-        my_pathadd PATH /usr/pkg/bin 
+        my_pathadd MANPATH /opt/local/man
+
         #regular PATH(s)
         my_pathadd PATH /usr/bin /bin /usr/sbin /sbin /usr/local/bin
         my_pathadd PATH /usr/local/sbin /usr/X11/bin 
-
-        unset MANPATH
-        my_pathadd MANPATH /opt/local/man /opt/local/share/man /usr/pkg/man 
-        my_pathadd MANPATH /usr/local/man /usr/share/man /usr/X11/man
-        my_pathadd MANPATH /usr/X11/share/man
+        my_pathadd MANPATH /usr/man /usr/X11/man /usr/X11/share/man
 
         LC_CTYPE=en_US.UTF-8
         export LC_CTYPE
@@ -275,6 +290,18 @@ case ${my_SHELL:-unset} in
             . /opt/local/etc/bash_completion
         PS1="[\u@\h:\w>\n\$ "
         ;;
+    *MIRBSD\ KSH*)
+        set -o vi #vi mode
+        set -o vi-tabcomplete #tab completion 
+        ENV=${HOME}/.mkshrc
+        HISTFILE=${HOME}/.mksh_history
+        HISTFILESIZE=100000
+        PS1='$(whoami)@$(hostname -s):$(pwd)> '
+        case $(id -u) in
+            0 ) PS1="${PS1}${my_NEWLINE}:# ";;
+            * ) PS1="${PS1}${my_NEWLINE}:$ ";;
+        esac
+        ;;
     KSH* ) 
         #--------Korn SHELL--------#
         my_lecho "initializing KSH (or something pretending to be it)"
@@ -307,7 +334,6 @@ esac
 
 #-------After all is said and done-------#
 my_pathadd PATH ~/bin ~/scripts ~/.bin
-export PATH     #In most cases you want to do this
 
 #-------Domain specific RC-------#
 [ -r ${HOME}/.shrc_${my_DOMAIN} ]  && .  ${HOME}/.shrc_${my_DOMAIN}
