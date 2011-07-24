@@ -19,7 +19,7 @@
         { #echo "already read for my_${$}"
             return 1;}
 
-eval "my_${$}=processed"
+eval "my_${$}=processed" #set marker to indicate we've processed this file
 
 #-----------------------------------------------------------------------------#
 #-------------------------------RUN MODE CHECK--------------------------------#
@@ -45,23 +45,25 @@ my_lecho(){
 }
 
 my_pathmatch_cleanup(){
+    #clean up some sloppy global variables. I should really clean these up
     IFS=$my_old_IFS
     unset my_pathmatch_tmp1
     unset my_pathmatch_search_del
     unset my_pathmatch_search_var
     unset my_pathmatch_search_string
     unset my_old_IFS
+    #zsh specific clean up
     [ "${reset_wordsplit:=no}" = "yes" ] && setopt noshwordsplit
 }
 
 my_pathmatch(){
-    my_pathmatch_search_var=${1}
-    my_pathmatch_search_string=${2:?}
-    my_pathmatch_search_del=${3:-":"}
-    my_old_IFS=${IFS}
-    IFS=${my_pathmatch_search_del}
+    my_pathmatch_search_var=${1}        #Variable to check
+    my_pathmatch_search_string=${2:?}   #string to look for
+    my_pathmatch_search_del=${3:-":"}   #optional delimiter (use ';' for LUA*)
+    my_old_IFS=${IFS}                   #capture old Field Separator
+    IFS=${my_pathmatch_search_del}      #replace with new delimiter
     #check to see if we're running zsh with shwordsplit set
-    #note if 'y' is in $- and $my_SHELL is (z|n)sh then shwordsplit is already
+    #Note: if 'y' is in $- and $my_SHELL is (z|n)sh then shwordsplit is already
     #set. So we do nothing. 
     case $my_SHELL in 
         ZSH*)
@@ -75,18 +77,24 @@ my_pathmatch(){
             esac
     esac
     for my_pathmatch_tmp1 in $my_pathmatch_search_var ; do 
+        #loop through each element in my_pathmatch_search_var to see whether
+        #it matches the path we're testing against. If so, cleanup and return 0
         [ "${my_pathmatch_tmp1}" = "${my_pathmatch_search_string:?}" ] &&\
             { my_pathmatch_cleanup; return 0 ;} 
     done
-    my_pathmatch_cleanup
-    return 1
+    my_pathmatch_cleanup #clean up
+    return 1 #return 1 if we've gotten this far (indicates no match above)
 }
 
 my_pathadd(){
-    my_tmp1=$1
-    shift 
-    case $my_tmp1 in
+    #This is a function to add path elements to a path variable. $1 is the 
+    #name of the variable to append to (note: use PATHNAME, not $PATHNAME)
+    my_PATHVAR=$1  #take the first parameter as PATHVAR
+    shift       #remove $1 and shift the other params down
+    case $my_PATHVAR in
         LUA*)
+            #If we're modifying a Lua Path we the deperator to ';' instead of 
+            #the standard ':'
             my_OFS=";"
             ;;
         *)
@@ -95,16 +103,21 @@ my_pathadd(){
     esac
 
     for PATH_add in ${@:?"USAGE: my_pathadd <VARIABLE> <PTH1> [<PTH2>]..."};do 
-        if eval "[ -n \"\${$my_tmp1}\" ]" ; then 
-            if [ -d ${PATH_add} ] ; then 
-                eval "my_pathmatch \${$my_tmp1} ${PATH_add} \\${my_OFS}" ||\
-                eval "$my_tmp1=\"\${$my_tmp1}${my_OFS}${PATH_add}\""
+        if eval "[ -n \"\${$my_PATHVAR}\" ]" ; then  #if the variable exists
+            if [ -d ${PATH_add} ] ; then #if the path is an existing dir
+                #call my_pathmatch <VARIABLE> <PATH> <FS>. If we get 0 as a 
+                #return code (success) we know the PATH is already in 
+                #<VARIABLE>. If we get anything else we add PATH to <VARIABLE>
+                eval "my_pathmatch \${$my_PATHVAR} ${PATH_add} \\${my_OFS}" ||\
+                eval "$my_PATHVAR=\"\${$my_PATHVAR}${my_OFS}${PATH_add}\""
             fi
         else
-            eval "$my_tmp1=$PATH_add"
+            #If PATHVAR doesn't already exist we initialize it to the first
+            #PATH parameter passed ($2)
+            eval "$my_PATHVAR=$PATH_add"
         fi
     done
-    unset my_tmp1
+    unset my_PATHVAR
     unset PATH_add
     export PATH
 }
@@ -115,6 +128,9 @@ my_cleanpath(){
 }
 
 my_reload(){
+    #Quick function to unset my_<PID>; and reload ENV file. This is the way
+    #to refresh your environment since, by default, just sourcing it after
+    #initialization will not work.
     unset my_${$}
     #[ -n ${BASH_ENV} ] && . ${BASH_ENV:"$ENV"} || . ${ENV}
     my_loadfile=${BASH_ENV:-"${ENV}"}
@@ -122,6 +138,10 @@ my_reload(){
 }
 
 my_getshell(){
+    #Biased test to figure out what shell we're running. We check for KSH first
+    #Some shells that are not true KSH (PDKSH|OKSH|MKSH) may lie here. If this
+    #test does not work for your needs please modify it. It would be nice if
+    #you sent your modification along so for the benefit of others.
     if [ "${KSH_VERSION}X" != "X" ] ; then
         echo "KSH_VERSION:${KSH_VERSION}"
     elif [ "${ZSH_VERSION}X" != "X" ] ; then
@@ -129,13 +149,13 @@ my_getshell(){
     elif [ "${BASH_VERSION}X" != "X" ] ; then
         echo "BASH_VERSION:${BASH_VERSION}"
     elif ([ "${.sh.version}X" = "Version M 1993-12-28 s+X" ]) 2>/dev/null; then 
-        #the above is a test for the specific version of KSH that comes with
-        #OS X. Standard versions of KSH can be detected with the ${KSH_VERSION}
-        #check at the top of this function. 
-        #Note 1: The surrounding ()s are used to errors from shells that 
-        #complain about 'bad substitution'. You will need to update the string
+        #The above is a test for the specific version of KSH that comes with
+        #OS X. Standard versions of KSH can be detected with the $KSH_VERSION}
+        #check at the top of this function. You will need to update the string
         #if Apple ever gets around to upgrading their included KSH. 
-        #Note: This test is expensive so we only execute it if all else fails
+        #Note 1: The surrounding ()s are used to catch errors from shells that 
+        #complain about 'bad substitution'. 
+        #Note 2: This test is expensive so we only execute it if all else fails
         echo "KSH_VERSION:${.sh.version}"
     else
         echo "UNKNOWN"
@@ -147,7 +167,7 @@ my_getshell(){
 #-----------------------------------------------------------------------------#
 
 #------Get our SHELL-----#
-[ -n $my_SHELL ] && my_SHELL=$(my_getshell)
+[ -n $my_SHELL ] && my_SHELL=$(my_getshell) 
 
 #-----Get our OS-----#
 my_OS=$(uname) 
@@ -181,6 +201,11 @@ my_HOST=${my_FULLHOSTNAME%%.*}
 my_DOMAIN=${my_FULLHOSTNAME#*.}
 my_NEWLINE="
 "
+#The above two lines are a cheap hack to set a litteral new line character
+#echo and print can't be used in a reliable fashion to do this across 
+#environments. The above does not work with all shells, but it should not
+#cause any problems. If you have a better (POSIX compliant) idea on how to
+#do this, please let me know.
 
 
 case ${my_OS:-unset} in
