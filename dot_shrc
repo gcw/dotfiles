@@ -173,7 +173,7 @@ my_getshell(){
 my_OS=$(uname) 
 
 #----Get our username----#
-my_USERNAME=$(id -u)
+my_USERNAME=$(id -un 2> /dev/null || id -u)
 
 #------Set EDITOR(s)-----#
 if { which vim 2> /dev/null  1> /dev/null ;}; then
@@ -217,7 +217,7 @@ case ${my_OS:-unset} in
         my_pathadd PATH /usr/local/bin /usr/local/sbin
         my_pathadd MANPATH /usr/local/man
 
-        #added for pkgsrc   (third priority)
+        #added for pkgsrc   (second priority)
         my_pathadd PATH /usr/local/pkg/bin /usr/local/pkg/sbin
         my_pathadd MANPATH /usr/local/pkg/man
         
@@ -245,9 +245,10 @@ case ${my_OS:-unset} in
         my_cleanpath
         my_pathadd PATH /usr/local/bin /usr/local/sbin
         #get rid of that annoying and stupid 'colorls' crap
-        unalias ls
+        alias ls='/bin/ls' #set it just in case it's not yet set
+        unalias ls #unset it now
         ;;
-    CYGWIN_NT-5.1 )
+    CYGWIN_NT* )
         #-------CygWin Specifics-------#
         CYGWIN=tty 
         export CYGWIN
@@ -353,7 +354,11 @@ case ${my_SHELL:-unset} in
         ENV=${HOME}/.shrc
         export ENV
         #PS1='$(whoami)@$(hostname -s):$(pwd)>'
-        PS1="$my_USERNAME@$my_HOST> "
+        PS1="$my_USERNAME@$my_HOST: "
+        case $(id -u) in
+            0 ) PS1="${PS1}${my_NEWLINE}# ";;
+            * ) PS1="${PS1}${my_NEWLINE}$ ";;
+        esac
         ;;
 esac
 
