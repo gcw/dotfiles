@@ -46,42 +46,27 @@ my_lecho(){
 
 my_pathmatch_cleanup(){
     #clean up some sloppy global variables. I should really clean these up
-    IFS=$my_old_IFS
-    unset my_pathmatch_tmp1
-    unset my_pathmatch_search_del
-    unset my_pathmatch_search_var
-    unset my_pathmatch_search_string
-    unset my_old_IFS
+    unset mPMatchDel
+    unset mPMatchVar
+    unset mPMatchString
     #zsh specific clean up
     [ "${reset_wordsplit:=no}" = "yes" ] && setopt noshwordsplit
 }
 
 my_pathmatch(){
-    my_pathmatch_search_var=${1}        #Variable to check
-    my_pathmatch_search_string=${2:?}   #string to look for
-    my_pathmatch_search_del=${3:-":"}   #optional delimiter (use ';' for LUA*)
-    my_old_IFS=${IFS}                   #capture old Field Separator
-    IFS=${my_pathmatch_search_del}      #replace with new delimiter
-    #check to see if we're running zsh with shwordsplit set
-    #Note: if 'y' is in $- and $my_SHELL is (z|n)sh then shwordsplit is already
-    #set. So we do nothing. 
-    case $my_SHELL in 
-        ZSH*)
-            case $- in 
-                *y*)
-                    echo -n '' #here we do nothing
-                    ;;
-                *)
-                    setopt shwordsplit && reset_wordsplit=yes
-                    ;;
-            esac
-    esac
-    for my_pathmatch_tmp1 in $my_pathmatch_search_var ; do 
-        #loop through each element in my_pathmatch_search_var to see whether
-        #it matches the path we're testing against. If so, cleanup and return 0
-        [ "${my_pathmatch_tmp1}" = "${my_pathmatch_search_string:?}" ] &&\
+    mPMatchVar=${1}        #Variable to check
+    mPMatchString=${2:?}   #string to look for
+    mPMatchDel=${3:-":"}   #optional delimiter (use ';' for LUA*)
+
+    case ${mPMatchVar} in 
+        ${mPMatchString}|\
+        ${mPMatchString}${mPMatchDel}*|\
+        *${mPMatchDel}${mPMatchString}${mPMatchDel}*|\
+        *${mPMatchDel}${mPMatchString})
+            echo "rejecting (${mPMatchString}) because it's in there already"
             { my_pathmatch_cleanup; return 0 ;} 
-    done
+            ;;
+    esac
     my_pathmatch_cleanup #clean up
     return 1 #return 1 if we've gotten this far (indicates no match above)
 }
@@ -89,12 +74,12 @@ my_pathmatch(){
 my_pathadd(){
     #This is a function to add path elements to a path variable. $1 is the 
     #name of the variable to append to (note: use PATHNAME, not $PATHNAME)
-    my_PATHVAR=$1  #take the first parameter as PATHVAR
-    shift       #remove $1 and shift the other params down
+    my_PATHVAR=$1   #take the first parameter as PATHVAR
+    shift           #remove $1 and shift the other params down
     case $my_PATHVAR in
         LUA*)
-            #If we're modifying a Lua Path we the deperator to ';' instead of 
-            #the standard ':'
+            #If we're modifying a Lua Path we set the separator to ';' instead
+            #of the standard ':'
             my_OFS=";"
             ;;
         *)
@@ -289,6 +274,8 @@ case ${my_SHELL:-unset} in
         PS1="[%n@%m:%/>${my_NEWLINE}%# "
         ENV=${HOME}/.zshrc
         export ENV
+        SHELL=$(which zsh) #Needed for screen on GNU systems (bleh)
+        export SHELL
         ;;
     BASH* ) 
         #--------Bourne Again SHELL--------#
