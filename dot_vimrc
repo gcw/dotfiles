@@ -1,26 +1,55 @@
-"comments
-"
-"Auto Indent
-set autoindent
+"initialize pathogen
+call pathogen#runtime_append_all_bundles()
+call pathogen#helptags()
+"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+"!!!!!!!!!!!!!!!!!Security precaution!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+"set noreadline
 
-"Width of a tab
+filetype on
+set autoindent
 set tabstop=4
 set shiftwidth=4
-"Use spaces instead of the TAB character
 set expandtab
 set showmatch
-"incrimental search result display and ignore case
 set incsearch
-set ignorecase
-"Let us know where we are in the file(s)
 set ruler
-"Turn off Audio bell and set visual on
-set vb t_vb=
-"turn off word wrapping
-set wrap!
+set number
+setlocal spell spelllang=en_us
+set spell
+syntax enable
 
-"indent folding
-set foldenable
-set fdm=indent
-"let space toggle a fold
-nnoremap <space> za
+set vb t_vb=
+set nowrap
+
+if has("gui_running")
+  if has("gui_gtk2")
+    set guifont=Inconsolata\ 14
+  else
+    set guifont=Monaco:h13
+  endif
+endif
+
+
+set background=dark
+let g:solarized_termtrans=1
+let g:solarized_termcolors=256
+let g:solarized_contrast="high"
+let g:solarized_visibility="high"
+colorscheme solarized
+
+set runtimepath^=~/.vim/bundle/ctrlp.vim
+
+"ControlP
+let g:ctrlp_map = '<c-p>'
+let g:ctrlp_cmd = 'CtrlP'
+
+"minibuffexpl
+"minbuff setup
+let g:miniBufExplMapWindowNavVim = 1
+let g:miniBufExplMapWindowNavArrows = 1
+let g:miniBufExplMapCTabSwitchBufs = 1
+let g:miniBufExplModSelTarget = 1
+
+"Super-T -- nothing required
+"Syntastic -- nothing required

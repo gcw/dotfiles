@@ -59,10 +59,10 @@ my_pathmatch(){
     mPMatchDel=${3:-":"}   #optional delimiter (use ';' for LUA*)
 
     case ${mPMatchVar} in 
-        ${mPMatchString}|\
-        ${mPMatchString}${mPMatchDel}*|\
-        *${mPMatchDel}${mPMatchString}${mPMatchDel}*|\
-        *${mPMatchDel}${mPMatchString})
+        "${mPMatchString}"|\
+        "${mPMatchString}${mPMatchDel}*"|\
+        "*${mPMatchDel}${mPMatchString}${mPMatchDel}*"|\
+        "*${mPMatchDel}${mPMatchString}")
             echo "rejecting (${mPMatchString}) because it's in there already"
             { my_pathmatch_cleanup; return 0 ;} 
             ;;
@@ -87,24 +87,28 @@ my_pathadd(){
             ;;
     esac
 
-    for PATH_add in ${@:?"USAGE: my_pathadd <VARIABLE> <PTH1> [<PTH2>]..."};do 
-        if eval "[ -n \"\${$my_PATHVAR}\" ]" ; then  #if the variable exists
-            if [ -d ${PATH_add} ] ; then #if the path is an existing dir
+    [ -n "${1:?"USAGE: my_pathadd <VARIABLE> <PTH1> [<PTH2>] ..."}" ]
+    while [ ${#} -gt 0 ] ; do 
+    #for PATH_add in ${@:?"USAGE: my_pathadd <VARIABLE> <PTH1> [<PTH2>]..."};do 
+        PATH_add=${1}
+        if [ -d "${PATH_add}" ] ; then #if the path is an existing dir
+            if eval "[ -n \"\${$my_PATHVAR}\" ]" ; then #if the variable exists
                 #call my_pathmatch <VARIABLE> <PATH> <FS>. If we get 0 as a 
                 #return code (success) we know the PATH is already in 
                 #<VARIABLE>. If we get anything else we add PATH to <VARIABLE>
-                eval "my_pathmatch \${$my_PATHVAR} ${PATH_add} \\${my_OFS}" ||\
+                eval "my_pathmatch \"\${$my_PATHVAR}\" \"${PATH_add}\" \\${my_OFS}" ||\
                 eval "$my_PATHVAR=\"\${$my_PATHVAR}${my_OFS}${PATH_add}\""
+            else
+                #If PATHVAR doesn't already exist we initialize it to the first
+                #PATH parameter passed ($2)
+                eval "$my_PATHVAR=\"$PATH_add\""
             fi
-        else
-            #If PATHVAR doesn't already exist we initialize it to the first
-            #PATH parameter passed ($2)
-            eval "$my_PATHVAR=$PATH_add"
         fi
+        shift
     done
+    eval "export $my_PATHVAR"
     unset my_PATHVAR
     unset PATH_add
-    export PATH
 }
 
 my_cleanpath(){
@@ -152,7 +156,7 @@ my_getshell(){
 #-----------------------------------------------------------------------------#
 
 #------Get our SHELL-----#
-[ -n $my_SHELL ] && my_SHELL=$(my_getshell) 
+[ -n "${my_SHELL}" ] || my_SHELL=$(my_getshell) 
 
 #-----Get our OS-----#
 my_OS=$(uname) 
@@ -169,9 +173,11 @@ fi
 FCEDIT=$EDITOR
 VISUAL=$EDITOR
 HISTEDIT=$EDITOR
+TERM="xterm-256color"
 export EDITOR
 export FCEDIT
 export HISTEDIT
+export TERM
 #------Set PAGER-----#
 if { which less 2> /dev/null 1> /dev/null;}; then
     PAGER=less
@@ -201,10 +207,6 @@ case ${my_OS:-unset} in
 	    #added for HomeBrew (first priority)
         my_pathadd PATH /usr/local/bin /usr/local/sbin
         my_pathadd MANPATH /usr/local/man
-
-        #added for pkgsrc   (second priority)
-        my_pathadd PATH /usr/local/pkg/bin /usr/local/pkg/sbin
-        my_pathadd MANPATH /usr/local/pkg/man
         
         #added for macports (third priority)
         my_pathadd PATH /opt/local/bin /opt/local/sbin
@@ -215,8 +217,39 @@ case ${my_OS:-unset} in
         my_pathadd PATH /usr/local/sbin /usr/X11/bin 
         my_pathadd MANPATH /usr/man /usr/X11/man /usr/X11/share/man
 
+        #added for pkgsrc   (second priority)
+        my_pathadd PATH /usr/local/pkg/bin /usr/local/pkg/sbin
+        my_pathadd MANPATH /usr/local/pkg/man
+
+        #added for node.js  (homebrew install) 
+        my_pathadd NODE_PATH /usr/local/lib/node_modules
+
         LC_CTYPE=en_US.UTF-8
         export LC_CTYPE
+        OFFLINE=1
+        export OFFLINE
+
+        unset ti_path
+        #Titanium CLI support on OS X
+        for try_path in  \
+            "${HOME}/Library/Application Support/Titanium/mobilesdk/osx" \
+            "/Library/Application Support/Titanium/mobilesdk/osx" ; do 
+            if [ ${#ti_path} -eq 0 ] ; then
+                my_pathadd ti_path "${try_path}"
+            fi
+            unset try_path
+        done
+        if [ -n "${ti_path}" ] ; then 
+            unset ti_version
+            unalias titanium
+            ti_left="${ti_path%% *}"
+            ti_right="${ti_path##* }"
+            ti_version=$(ls -t "${ti_path}"|head -1)
+            alias titanium="$(echo ${ti_path}/${ti_version}/titanium.py |\
+                                sed 's/ /\\ /g')"
+            unset ti_left
+            unset ti_right
+        fi 
         ;;
     FreeBSD )
         #-------FreeBSD Specifics-------#
@@ -232,6 +265,7 @@ case ${my_OS:-unset} in
         #get rid of that annoying and stupid 'colorls' crap
         alias ls='/bin/ls' #set it just in case it's not yet set
         unalias ls #unset it now
+        #alias titanium=$HOME/.titanium/mobilesdk/linux/${ti_version}>/titanium.py
         ;;
     CYGWIN_NT* )
         #-------CygWin Specifics-------#
@@ -276,6 +310,8 @@ case ${my_SHELL:-unset} in
         export ENV
         SHELL=$(which zsh) #Needed for screen on GNU systems (bleh)
         export SHELL
+        [[ -s "$HOME/.rvm/scripts/rvm" ]] && . "$HOME/.rvm/scripts/rvm" # Load RVM into a shell session *as a function*
+        [[ -s "$HOME/.pythonbrew/etc/bashrc" ]] && source "$HOME/.pythonbrew/etc/bashrc"
         ;;
     BASH* ) 
         #--------Bourne Again SHELL--------#
@@ -302,6 +338,9 @@ case ${my_SHELL:-unset} in
         [ -f /opt/local/etc/bash_completion ] &&\
             . /opt/local/etc/bash_completion
         PS1="[\u@\h:\w>\n\$ "
+        #[[ -s "/Users/gcw/.rvm/scripts/rvm" ]] && . "/Users/gcw/.rvm/scripts/rvm" # Load RVM into a shell session *as a function*
+        [[ -s "$HOME/.rvm/scripts/rvm" ]] && . "$HOME/.rvm/scripts/rvm" # Load RVM into a shell session *as a function*
+        [[ -s "$HOME/.pythonbrew/etc/bashrc" ]] && source "$HOME/.pythonbrew/etc/bashrc"
         ;;
     *MIRBSD\ KSH*)
         set -o vi #vi mode
@@ -358,3 +397,5 @@ my_pathadd PATH ~/bin ~/scripts ~/.bin
 [ -r ${HOME}/.shrc_${my_HOST} ]  && .  ${HOME}/.shrc_${my_HOST}
 #-------LOCAL RC (always run if present)-------#
 [ -r ${HOME}/.shrc_local ]  && .  ${HOME}/.shrc_local
+
+#PATH=$PATH:$HOME/.rvm/bin # Add RVM to PATH for scripting
