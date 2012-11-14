@@ -59,10 +59,10 @@ my_pathmatch(){
     mPMatchDel=${3:-":"}   #optional delimiter (use ';' for LUA*)
 
     case ${mPMatchVar} in 
-        "${mPMatchString}"|\
-        "${mPMatchString}${mPMatchDel}*"|\
-        "*${mPMatchDel}${mPMatchString}${mPMatchDel}*"|\
-        "*${mPMatchDel}${mPMatchString}")
+        ${mPMatchString}|\
+        ${mPMatchString}${mPMatchDel}*|\
+        *${mPMatchDel}${mPMatchString}${mPMatchDel}*|\
+        *${mPMatchDel}${mPMatchString})
             echo "rejecting (${mPMatchString}) because it's in there already"
             { my_pathmatch_cleanup; return 0 ;} 
             ;;
@@ -103,6 +103,8 @@ my_pathadd(){
                 #PATH parameter passed ($2)
                 eval "$my_PATHVAR=\"$PATH_add\""
             fi
+        else
+            echo "${PATH_add} is not a directory that I can find"
         fi
         shift
     done
@@ -240,6 +242,7 @@ case ${my_OS:-unset} in
             unset try_path
         done
         if [ -n "${ti_path}" ] ; then 
+            alias titanium="echo 'not yet poppin'"
             unset ti_version
             unalias titanium
             ti_left="${ti_path%% *}"
