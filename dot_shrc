@@ -103,8 +103,6 @@ my_pathadd(){
                 #PATH parameter passed ($2)
                 eval "$my_PATHVAR=\"$PATH_add\""
             fi
-        else
-            echo "${PATH_add} is not a directory that I can find"
         fi
         shift
     done
