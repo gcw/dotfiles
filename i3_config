@@ -12,7 +12,7 @@
 set $mod Mod4
 
 # font for window titles. ISO 10646 = Unicode
-#font -misc-fixed-medium-r-normal--13-120-75-75-C-70-iso10646-1
+font -misc-fixed-medium-r-normal--13-120-75-75-C-70-iso10646-1
 #font xft:MONACO 14
 
 # Use Mouse+$mod to drag floating windows to their wanted position
@@ -21,6 +21,8 @@ floating_modifier $mod
 # start a terminal
 #bindsym $mod+Return exec i3-sensible-terminal
 bindsym $mod+Return exec xterm
+bindsym $mod+m exec ~/.bin/mate.awk
+bindsym $mod+period exec xscreensaver-command -lock
 
 # kill focused window
 bindsym $mod+Shift+Q kill
@@ -28,8 +30,9 @@ bindsym $mod+Shift+Q kill
 # start dmenu (a program launcher)
 bindsym $mod+d exec dmenu_run
 
-exec --no-startup-id { xset -dpms & ;}
-exec --no-startup-id { xscreensaver & ;}
+exec --no-startup-id xv -max -root ~/.wallpaper-image -quit
+exec --no-startup-id xset -dpms 
+exec --no-startup-id xscreensaver -nosplash
 
 # change focus
 bindsym $mod+l focus right
@@ -85,7 +88,8 @@ bindsym $mod+space focus mode_toggle
 bindsym $mod+a focus parent
 
 # focus the child container
-#bindcode $mod+d focus child
+#bindcode $mod+z focus child
+bindsym $mod+z focus child
 
 # switch to workspace
 bindsym $mod+1 workspace 1
@@ -113,8 +117,8 @@ bindsym $mod+Shift+parenright move container to workspace 10
 
 bindsym $mod+bracketright workspace next
 bindsym $mod+bracketleft workspace previous
-bindsym $mod+braceright move container to workspace next
-bindsym $mod+braceleft move container to workspace previous
+bindsym $mod+Shift+braceright move container to workspace next
+bindsym $mod+Shift+braceleft move container to workspace previous
 
 # reload the configuration file
 bindsym $mod+Shift+C reload
