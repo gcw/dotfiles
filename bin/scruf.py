@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
-# certkey_to_bearer_get_apikey_print_stdout.py
-# CLI:
-#   python3 certkey_to_bearer_get_apikey_print_stdout.py <host> <ca_bundle_or_False> <cert.pem> <key.pem> <system_name> <account_name>
+# get_apikey_via_pysafeguard.py
+#
+# CLI (same as before):
+#   python3 get_apikey_via_pysafeguard.py <host> <ca_bundle_or_False> <cert.pem> <key.pem> <system_name> <account_name>
+#
+# Behavior:
+#   - Uses PySafeguard with client certificate+key.
+#   - Resolves the authenticated principal via Token/WhoAmI.
+#   - Selects the first A2A registration owned by that principal (content[0]["Id"]).
+#   - Enumerates RetrievableAccounts for that registration, finds <system_name>/<account_name>.
+#   - Prints only the API key (JSON) and exits. No password retrieval here.
 
 import sys, json
-from pysafeguard import PySafeguardConnection, HttpMethods, Services, A2ATypes
+from pysafeguard import PySafeguardConnection, HttpMethods, Services
 
 def jout(obj, code=0):
     print(json.dumps(obj), flush=True)
@@ -37,43 +45,51 @@ def name_from(obj, flat, nested, key):
     sub = obj.get(nested) or {}
     return sub.get(key)
 
-def find_api_key_and_password(host, verify, cert, key, system_name, account_name):
-    # 1) Connect with certificate (mTLS → STS → bearer handled by PySafeguard)
+def main(host, verify, cert_path, key_path, system_name, account_name):
+    # Connect using cert+key (mTLS → STS → bearer handled by PySafeguard)
     conn = PySafeguardConnection(host, verify=verify)
     try:
-        conn.connect_certificate(cert, key)
+        conn.connect_certificate(cert_path, key_path)
     except Exception as e:
         jerr("certificate connect failed", {"exception": str(e)})
 
-    # 2) Retrieve authenticated identity (user/app) to get owner id
+    # Auth principal (exact endpoint; case-sensitive)
     try:
         r = conn.invoke(HttpMethods.GET, Services.CORE, "Token/WhoAmI")
     except Exception as e:
-        jerr("whoami request_error", {"exception": str(e)})
+        jerr("Token/WhoAmI request_error", {"exception": str(e)})
     ident = get_json_or_die(r, "Token/WhoAmI")
+
+    # Owner ID resolution — prefer same shapes your working script uses
     owner_id = (
-        ident.get("Id") or ident.get("ID") or
-        ident.get("UserId") or ident.get("ApplicationId") or ident.get("AppId")
+        ident.get("RegistrationId")
+        or (ident.get("Application") or {}).get("Id")
+        or ident.get("ApplicationId")
+        or ident.get("UserId")
+        or ident.get("Id")
+        or ident.get("ID")
     )
     if owner_id is None:
-        jerr("unable to determine owner id from Token/WhoAmI", {"whoami_keys": list(ident.keys())})
+        jerr("unable to determine owner id", {"whoami_keys": list(ident.keys())})
 
-    # 3) Get the registration id the working script picks (first match by Owner/Id)
+    # First A2A registration owned by this principal (content[0]['Id'])
     try:
         r = conn.invoke(
             HttpMethods.GET, Services.CORE, "A2ARegistrations",
             query={"filter": f"Owner/Id eq {owner_id}", "limit": 1}
         )
     except Exception as e:
-        jerr("list registrations request_error", {"exception": str(e)})
+        jerr("A2ARegistrations request_error", {"exception": str(e)})
     content = get_json_or_die(r, "A2ARegistrations")
     if not isinstance(content, list) or not content:
         jerr("no A2A registration found for owner", {"owner_id": owner_id})
-    reg_id = content[0].get("Id") or content[0].get("ID")
-    if reg_id is None:
-        jerr("registration missing Id", {"registration": content[0]})
 
-    # 4) Enumerate retrievable accounts under that registration; find system/account
+    reg = content[0]
+    reg_id = reg.get("Id") or reg.get("ID")
+    if reg_id is None:
+        jerr("registration missing Id", {"registration": reg})
+
+    # Enumerate retrievable accounts for that registration; find the target
     page, limit = 0, 100
     while True:
         try:
@@ -83,7 +99,7 @@ def find_api_key_and_password(host, verify, cert, key, system_name, account_name
                 query={"page": page, "limit": limit}
             )
         except Exception as e:
-            jerr("list retrievable accounts request_error",
+            jerr("RetrievableAccounts request_error",
                  {"registration_id": reg_id, "page": page, "exception": str(e)})
 
         if getattr(rr, "status_code", 200) in (401, 403):
@@ -101,18 +117,10 @@ def find_api_key_and_password(host, verify, cert, key, system_name, account_name
                 api_key = ra.get("ApiKey")
                 if not api_key:
                     jerr("match found but ApiKey missing", {"registration_id": reg_id, "ra": ra})
-                # 5) Use api_key to retrieve password via A2A
-                try:
-                    secret = PySafeguardConnection.a2a_get_credential(
-                        host, api_key, cert, key, verify, A2ATypes.PASSWORD
-                    )
-                except Exception as e:
-                    jerr("a2a retrieval failed", {"exception": str(e)})
                 jout({
                     "api_key": api_key,
-                    "password": secret,
                     "found": True,
-                    "registration": {"id": reg_id, "app_name": content[0].get("AppName")},
+                    "registration": {"id": reg_id, "app_name": reg.get("AppName")},
                     "asset": asset_nm,
                     "account": acct_nm
                 })
@@ -128,5 +136,5 @@ if __name__ == "__main__":
         })
     host, ca_arg, cert_path, key_path, system_name, account_name = sys.argv[1:7]
     verify = False if ca_arg.lower() == "false" else ca_arg
-    find_api_key_and_password(host, verify, cert_path, key_path, system_name, account_name)
+    main(host, verify, cert_path, key_path, system_name, account_name)
 
