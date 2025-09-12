@@ -1,26 +1,27 @@
 #!/usr/bin/env python3
 # get_apikey_via_pysafeguard.py
+#
+# EXACT workflow match to your working script:
+#  1) GET /service/core/v4/A2ARegistrations
+#  2) id = content[0]["Id"]
+#  3) GET /service/core/v4/A2ARegistrations/{id}/RetrievableAccounts
+#  4) Find (system_name, account_name) → ApiKey
+#
 # CLI (unchanged):
 #   python3 get_apikey_via_pysafeguard.py <host> <ca_bundle_or_False> <cert.pem> <key.pem> <system_name> <account_name>
-#
-# This version resolves the correct A2A Registration Id by trying, in order:
-#   1) Token/WhoAmI -> RegistrationId (direct fetch)
-#   2) Token/WhoAmI -> Application.Id (filter A2ARegistrations by Application/Id)
-#   3) Token/WhoAmI -> Owner Id (Id/UserId) (filter A2ARegistrations by Owner/Id)
-# Optional override: env REG_ID=<numeric id>
-#
-# Prints a single JSON object to stdout. On success: {"api_key": "...", "registration": {"id": ...,"source": "..."} ...}
 
-import os, sys, json
+import sys, json
 from pysafeguard import PySafeguardConnection, HttpMethods, Services
 
-def out(obj, code=0):
-    print(json.dumps(obj), flush=True); sys.exit(code)
+def out(d, code=0):
+    print(json.dumps(d), flush=True)
+    sys.exit(code)
 
 def err(msg, extra=None, code=1):
     d = {"error": msg, "found": False}
     if extra: d.update(extra)
-    print(json.dumps(d), flush=True); sys.exit(code)
+    print(json.dumps(d), flush=True)
+    sys.exit(code)
 
 def j(resp, where):
     sc = getattr(resp, "status_code", None)
@@ -41,57 +42,6 @@ def name_from(o, flat, nested, key):
     if v is not None: return v
     return (o.get(nested) or {}).get(key)
 
-def try_get_registration_by_id(conn, rid):
-    try:
-        r = conn.invoke(HttpMethods.GET, Services.CORE, f"A2ARegistrations/{rid}")
-    except Exception:
-        return None
-    if getattr(r, "status_code", 0) != 200:
-        return None
-    reg = j(r, f"A2ARegistrations/{rid}")
-    if isinstance(reg, dict) and (reg.get("Id") or reg.get("ID")):
-        return reg
-    return None
-
-def try_get_registration_by_filter(conn, flt):
-    try:
-        r = conn.invoke(HttpMethods.GET, Services.CORE, "A2ARegistrations", query={"filter": flt, "limit": 5})
-    except Exception:
-        return None
-    if getattr(r, "status_code", 0) in (401, 403):
-        return None
-    regs = j(r, "A2ARegistrations(filter)")
-    if isinstance(regs, list) and regs:
-        return regs[0]
-    return None
-
-def determine_registration(conn, whoami):
-    # 0) env override
-    env_rid = os.environ.get("REG_ID")
-    if env_rid:
-        reg = try_get_registration_by_id(conn, env_rid)
-        if reg: return reg, "env(REG_ID)"
-
-    # 1) direct RegistrationId from WhoAmI
-    reg_id = whoami.get("RegistrationId")
-    if reg_id:
-        reg = try_get_registration_by_id(conn, reg_id)
-        if reg: return reg, "Token/WhoAmI.RegistrationId"
-
-    # 2) Application.Id
-    app_id = (whoami.get("Application") or {}).get("Id") or whoami.get("ApplicationId") or whoami.get("AppId")
-    if app_id:
-        reg = try_get_registration_by_filter(conn, f"Application/Id eq {app_id}")
-        if reg: return reg, "Application/Id"
-
-    # 3) Owner Id (user/principal)
-    owner_id = whoami.get("Id") or whoami.get("UserId") or whoami.get("ID")
-    if owner_id:
-        reg = try_get_registration_by_filter(conn, f"Owner/Id eq {owner_id}")
-        if reg: return reg, "Owner/Id"
-
-    return None, None
-
 def main(host, verify, cert_path, key_path, system_name, account_name):
     conn = PySafeguardConnection(host, verify=verify)
     try:
@@ -99,20 +49,22 @@ def main(host, verify, cert_path, key_path, system_name, account_name):
     except Exception as e:
         err("certificate connect failed", {"exception": str(e)})
 
-    # WhoAmI (case-sensitive)
+    # 1) First call: list registrations (no filters), like your curl
     try:
-        r = conn.invoke(HttpMethods.GET, Services.CORE, "Token/WhoAmI")
+        r = conn.invoke(HttpMethods.GET, Services.CORE, "A2ARegistrations")
     except Exception as e:
-        err("Token/WhoAmI request_error", {"exception": str(e)})
-    whoami = j(r, "Token/WhoAmI")
+        err("A2ARegistrations request_error", {"exception": str(e)})
+    content = j(r, "A2ARegistrations")
+    if not isinstance(content, list) or not content:
+        err("no registrations returned")
 
-    reg, source = determine_registration(conn, whoami)
-    if not reg:
-        err("unable to resolve A2A registration", {"whoami_keys": list(whoami.keys())})
-    reg_id = reg.get("Id") or reg.get("ID")
+    # 2) Take the first object's Id (exactly: content[0]['Id'])
+    reg_id = content[0].get("Id") or content[0].get("ID")
+    if reg_id is None:
+        err("first registration missing Id", {"first_object": content[0]})
 
-    # Enumerate retrievable accounts under the resolved registration; find system/account
-    page, limit = 0, 100
+    # 3) Second call: list retrievable accounts under that registration
+    page, limit = 0, 200
     while True:
         try:
             rr = conn.invoke(
@@ -121,12 +73,7 @@ def main(host, verify, cert_path, key_path, system_name, account_name):
                 query={"page": page, "limit": limit}
             )
         except Exception as e:
-            err("RetrievableAccounts request_error",
-                {"registration_id": reg_id, "page": page, "exception": str(e)})
-
-        if getattr(rr, "status_code", 200) in (401, 403):
-            err("RetrievableAccounts forbidden",
-                {"registration_id": reg_id, "code": rr.status_code, "body": rr.text[:200]})
+            err("RetrievableAccounts request_error", {"registration_id": reg_id, "page": page, "exception": str(e)})
 
         ras = j(rr, f"RetrievableAccounts reg={reg_id}")
         if not isinstance(ras, list) or not ras:
@@ -142,21 +89,21 @@ def main(host, verify, cert_path, key_path, system_name, account_name):
                 out({
                     "api_key": api_key,
                     "found": True,
-                    "registration": {"id": reg_id, "source": source, "app_name": reg.get("AppName")},
+                    "registration": {"id": reg_id, "app_name": content[0].get("AppName")},
                     "asset": asset_nm,
                     "account": acct_nm
                 })
         page += 1
 
     err("no match for provided system/account",
-        {"registration_id": reg_id, "system": system_name, "account": account_name, "id_source": source})
+        {"registration_id": reg_id, "system": system_name, "account": account_name})
 
 if __name__ == "__main__":
     if len(sys.argv) != 7:
         err("Invalid arguments", {
             "usage": f"python {sys.argv[0]} <host> <ca_bundle_or_False> <cert.pem> <key.pem> <system_name> <account_name>"
         })
-    host, ca_arg, cert, key, system_name, account_name = sys.argv[1:7]
+    host, ca_arg, cert, key, system_name, account = sys.argv[1:7]
     verify = False if ca_arg.lower() == "false" else ca_arg
-    main(host, verify, cert, key, system_name, account_name)
+    main(host, verify, cert, key, system_name, account)
 
