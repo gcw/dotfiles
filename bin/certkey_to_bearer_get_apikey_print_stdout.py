@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # certkey_to_bearer_get_apikey_print_stdout.py (debugging edition)
-# Usage: python3 script.py <host> <ca_bundle_or_False> <cert.pem> <key.pem> <domain_name> <account_name>
+# Usage: script.py <host> <ca_bundle_or_False> <cert.pem> <key.pem> <domain_name> <account_name>
 # Always prints JSON to STDOUT. Adds progress markers so you see output immediately.
 
 import sys, json, requests, time
@@ -143,3 +143,4 @@ if __name__ == "__main__":
         find_api_key_with_bearer(host, bearer, verify, domain, account)
     except Exception as e:
         jerr("unhandled", {"exception": str(e)})
+
