@@ -1,9 +1,40 @@
-export ANSIBLE_LOOKUP_PLUGINS="$PWD/collection/oneidentity/safeguard/plugins/lookup"
-ansible-playbook -i localhost, -c local test_apikey.yml \
-  -e host="safeguard.example.com" \
-  -e cacert="/path/ca.pem" \
-  -e cert="/path/appcert.pem" \
-  -e key="/path/appkey.pem" \
-  -e system="CSDevExtDomain" \
-  -e account="svc.aap_spe_win"
+# from your repo root (or any dir)
+cat > test_apikey.yml <<'YAML'
+- hosts: localhost
+  gather_facts: false
+  vars:
+    # passed via -e
+    host: ""
+    cacert: ""
+    cert: ""
+    key: ""
+    system: ""
+    account: ""
+  tasks:
+    - name: Resolve ApiKey via spp_apikey lookup
+      set_fact:
+        spp_api_key: >-
+          {{ lookup('spp_apikey',
+                    host=host, cert=cert, key=key, cacert=cacert,
+                    system=system, account=account) }}
+      no_log: true
+      changed_when: false
+
+    - name: Retrieve password using vendor lookup
+      set_fact:
+        spp_password: >-
+          {{ lookup('oneidentity.safeguardcollection.safeguardcredentials',
+                    'Password',
+                    target_api_key=spp_api_key,
+                    connection={'host': host,
+                                'certificate_file': cert,
+                                'key_file': key,
+                                'verify': cacert}) }}
+      no_log: true
+      changed_when: false
+
+    - debug:
+        msg: "api_key_len={{ spp_api_key|length }}, password_len={{ spp_password|length }}"
+      no_log: true
+YAML
 
