@@ -116,5 +116,72 @@ class LookupModule(LookupBase):
         reg_index = int(kwargs.get("registration_index", 0))
         retfmt = kwargs.get("return", "api_key")
 
-        header
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+        base = f"https://{host}/service/core/v4"
+
+        def _get_json(url):
+            try:
+                r = open_url(
+                    url,
+                    method="GET",
+                    headers=headers,
+                    client_cert=cert,
+                    client_key=key,
+                    validate_certs=validate_certs,
+                    ca_path=cacert,
+                    follow_redirects="all",
+                    timeout=30,
+                )
+                raw = r.read()
+            except Exception as e:
+                raise AnsibleError(f"GET {url} failed: {e}")
+            try:
+                return json.loads(raw)
+            except Exception:
+                preview = (raw[:256].decode("utf-8", "ignore") if isinstance(raw, (bytes, bytearray)) else str(raw))[:256]
+                raise AnsibleError(f"Non-JSON from {url}: {preview!r}")
+
+        # 1) registrations
+        regs = _get_json(f"{base}/A2ARegistrations")
+        if not isinstance(regs, list) or not regs:
+            raise AnsibleError("A2ARegistrations returned empty list")
+
+        try:
+            reg = regs[reg_index]
+        except IndexError:
+            raise AnsibleError(f"registration_index {reg_index} out of range (len={len(regs)})")
+
+        reg_id = reg.get("Id") or reg.get("ID")
+        if reg_id is None:
+            raise AnsibleError(f"registration missing Id: {reg}")
+
+        # 2) retrievable accounts
+        api_key = None
+        page, limit = 0, 200
+        while True:
+            ras = _get_json(f"{base}/A2ARegistrations/{reg_id}/RetrievableAccounts?page={page}&limit={limit}")
+            if not isinstance(ras, list) or not ras:
+                break
+            for ra in ras:
+                asset_nm  = ra.get("AssetName") or (ra.get("Asset") or {}).get("Name")
+                account_nm= ra.get("AccountName") or (ra.get("Account") or {}).get("Name")
+                if asset_nm == system and account_nm == account:
+                    api_key = ra.get("ApiKey")
+                    if not api_key:
+                        raise AnsibleError(f"match found but ApiKey missing: {ra}")
+                    if retfmt == "dict":
+                        return [{
+                            "api_key": api_key,
+                            "registration_id": reg_id,
+                            "app_name": reg.get("AppName"),
+                            "asset": asset_nm,
+                            "account": account_nm
+                        }]
+                    return [api_key]
+            page += 1
+
+        raise AnsibleError(f"No ApiKey match for system='{system}' account='{account}' (registration_id={reg_id})")
 
