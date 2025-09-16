@@ -1,5 +1,4 @@
-# collections path or project ansible.cfg lookup_plugins path
-# file: spp_apikey.py
+# spp_apikey.py  (lookup plugin)
 
 from ansible.plugins.lookup import LookupBase
 from ansible.errors import AnsibleError
@@ -8,12 +7,11 @@ import json
 
 DOCUMENTATION = r"""
 lookup: spp_apikey
-author:
-  - Your Name (@you)
-short_description: Fetch Safeguard A2A ApiKey for a system/account via client-certificate auth
+author: You
+short_description: Fetch Safeguard A2A ApiKey for a system/account using client-certificate auth
 description:
   - Performs two HTTPS GETs against Safeguard Core:
-  - 1) GET /service/core/v4/A2ARegistrations (takes the first item, or an index you specify)
+  - 1) GET /service/core/v4/A2ARegistrations (takes the first item or an index you specify)
   - 2) GET /service/core/v4/A2ARegistrations/<Id>/RetrievableAccounts
   - Finds the entry matching (system, account) and returns its ApiKey.
 options:
@@ -34,70 +32,64 @@ options:
     type: str
     required: true
   system:
-    description: System name to match (a.k.a. AssetName).
+    description: System (AssetName) to match.
     type: str
     required: true
   account:
-    description: Account name to match (a.k.a. AccountName).
+    description: Account (AccountName) to match.
     type: str
     required: true
   validate_certs:
-    description: Validate TLS certs.
+    description: Validate TLS server certificates.
     type: bool
     default: true
   registration_index:
-    description: Index into the registrations list to select the Id (content[index].Id).
+    description: Index into registrations list (content[index].Id).
     type: int
     default: 0
-  return:
-    description: Return format; C(api_key) returns the key (string), C(dict) returns a dict.
+  return_format:
+    description: api_key (string) or dict (metadata).
     type: str
     choices: [api_key, dict]
     default: api_key
 notes:
-  - Runs on the controller (lookup).
-  - Requires controller-side network access to Safeguard.
+  - Runs on the controller (lookup plugin).
 """
 
 EXAMPLES = r"""
-- name: Resolve ApiKey (short name)
+- name: Resolve ApiKey
   set_fact:
     spp_api_key: >-
       {{ lookup('spp_apikey',
                 host=spp_host, cert=cert, key=key, cacert=cacert,
                 system=system_name, account=account_name) }}
 
-- name: Resolve ApiKey (FQCN inside a collection)
+- name: Resolve ApiKey (return dict)
   set_fact:
-    spp_api_key: >-
-      {{ lookup('oneidentity.safeguardcollection.spp_apikey',
+    spp_info: >-
+      {{ lookup('spp_apikey',
                 host=spp_host, cert=cert, key=key, cacert=cacert,
                 system=system_name, account=account_name,
-                registration_index=0) }}
+                return_format='dict') }}
 """
 
 RETURN = r"""
 _raw:
-  description: ApiKey string when return=api_key.
+  description: ApiKey string when return_format=api_key.
   type: str
 dict:
-  description: Returned when return=dict is set.
+  description: Returned when return_format=dict is used.
   type: dict
   contains:
     api_key:
-      description: The A2A ApiKey.
       type: str
     registration_id:
-      description: Registration Id used for the second request.
       type: int
     app_name:
-      description: AppName of the selected registration, if present.
       type: str
     asset:
-      description: Matched AssetName.
       type: str
     account:
-      description: Matched AccountName.
       type: str
 """
 
@@ -114,26 +106,18 @@ class LookupModule(LookupBase):
 
         validate_certs = kwargs.get("validate_certs", True)
         reg_index = int(kwargs.get("registration_index", 0))
-        retfmt = kwargs.get("return", "api_key")
+        retfmt = kwargs.get("return_format", "api_key")
 
-        headers = {
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-        }
+        headers = {"Accept": "application/json", "Content-Type": "application/json"}
         base = f"https://{host}/service/core/v4"
 
         def _get_json(url):
             try:
                 r = open_url(
-                    url,
-                    method="GET",
-                    headers=headers,
-                    client_cert=cert,
-                    client_key=key,
-                    validate_certs=validate_certs,
-                    ca_path=cacert,
-                    follow_redirects="all",
-                    timeout=30,
+                    url, method="GET", headers=headers,
+                    client_cert=cert, client_key=key,
+                    validate_certs=validate_certs, ca_path=cacert,
+                    follow_redirects="all", timeout=30,
                 )
                 raw = r.read()
             except Exception as e:
@@ -141,25 +125,22 @@ class LookupModule(LookupBase):
             try:
                 return json.loads(raw)
             except Exception:
-                preview = (raw[:256].decode("utf-8", "ignore") if isinstance(raw, (bytes, bytearray)) else str(raw))[:256]
+                preview = (raw[:256].decode("utf-8","ignore") if isinstance(raw,(bytes,bytearray)) else str(raw))[:256]
                 raise AnsibleError(f"Non-JSON from {url}: {preview!r}")
 
         # 1) registrations
         regs = _get_json(f"{base}/A2ARegistrations")
         if not isinstance(regs, list) or not regs:
             raise AnsibleError("A2ARegistrations returned empty list")
-
         try:
             reg = regs[reg_index]
         except IndexError:
             raise AnsibleError(f"registration_index {reg_index} out of range (len={len(regs)})")
-
         reg_id = reg.get("Id") or reg.get("ID")
         if reg_id is None:
             raise AnsibleError(f"registration missing Id: {reg}")
 
         # 2) retrievable accounts
-        api_key = None
         page, limit = 0, 200
         while True:
             ras = _get_json(f"{base}/A2ARegistrations/{reg_id}/RetrievableAccounts?page={page}&limit={limit}")
