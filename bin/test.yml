@@ -1,36 +1,23 @@
 - hosts: localhost
   gather_facts: false
   vars:
-    spp_host: safeguard-api-pp.schwab.com
-    cacert: /path/to/CA_Bundle_Prod_1.cer
-    cert:   /path/to/AD00008512.prePROD.safeguard.cert.pem
-    key:    /path/to/AD00008512.prePROD.safeguard.pkey.pem
+    host: safeguard.example.com
+    cacert: /path/ca_bundle.pem
+    cert:   /path/appcert.pem
+    key:    /path/appkey.pem
     system: CSDevExtDomain
     account: svc.aap_spe_win
-
   tasks:
-    - name: Resolve ApiKey via client-cert two-call flow
-      set_fact:
-        spp_api_key: >-
-          {{ lookup('oneidentity.safeguardcollection.spp_apikey',
-                    host=spp_host, cert=cert, key=key, cacert=cacert,
-                    system=system, account=account) }}
-      no_log: true
-
-    - name: Retrieve password using vendor lookup
+    - name: Get secret using custom Authentication header
       set_fact:
         spp_password: >-
-          {{ lookup('oneidentity.safeguardcollection.safeguardcredentials',
-                    'Password',
-                    target_api_key=spp_api_key,
-                    connection={'host': spp_host,
-                                'certificate_file': cert,
-                                'key_file': key,
-                                'verify': cacert}) }}
+          {{ lookup('spp_apikey_authsecret',
+                    'Password',            # secret type
+                    host=host, cacert=cacert, cert=cert, key=key,
+                    system=system, account=account,
+                    header_name='Authentication') }}
       no_log: true
 
-    # Example usage
-    - debug:
-        msg: "Got password length={{ spp_password|length }}"
+    - debug: msg="password length={{ spp_password|length }}"
       no_log: true
 
